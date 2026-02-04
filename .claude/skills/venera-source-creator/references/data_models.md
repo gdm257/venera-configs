@@ -2,21 +2,26 @@
 
 Complete reference for all data models used in Venera source configurations.
 
+**Important**: These are actual constructor functions available in the Venera JavaScript environment (`init.js`). Do not use `new Comic()` - these are constructor functions that should be called directly.
+
 ## Comic Object
 
-The primary data model for representing manga/comic entries.
+The primary data model for representing manga/comic entries in lists (search results, popular, latest).
 
 ### Constructor
 ```javascript
-new Comic({
+Comic({
   id: string,
   title: string,
+  subtitle?: string,
+  subTitle?: string, // equal to subtitle
   cover: string,
   tags: string[],
   description: string,
-  author: string,
-  status: string,
-  updateTime: number
+  maxPage?: number,
+  language?: string,
+  favoriteId?: string,
+  stars?: number // 0-5, double
 })
 ```
 
@@ -25,66 +30,44 @@ new Comic({
 |----------|------|----------|-------------|
 | `id` | string | ✅ | Unique identifier (from source website) |
 | `title` | string | ✅ | Display title |
+| `subtitle` | string | ❌ | Secondary title (often author name) |
+| `subTitle` | string | ❌ | Alias for subtitle |
 | `cover` | string | ✅ | URL to cover image |
 | `tags` | string[] | ✅ | Array of genre/tag strings |
 | `description` | string | ✅ | Summary/description text |
-| `author` | string | ❌ | Author/artist name(s) |
-| `status` | string | ❌ | Publication status: `'ongoing'`, `'completed'`, `'hiatus'`, `'cancelled'` |
-| `updateTime` | number | ❌ | Last update timestamp (milliseconds) |
-| `popularity` | number | ❌ | Popularity score for sorting |
-| `rating` | number | ❌ | Average user rating (0-5) |
-| `viewCount` | number | ❌ | Total view count |
-| `commentCount` | number | ❌ | Number of comments |
-| `favoriteCount` | number | ❌ | Number of user favorites |
-| `episodeCount` | number | ❌ | Total number of episodes/chapters |
-| `lastEpisode` | string | ❌ | Title of most recent episode |
-| `isFree` | boolean | ❌ | Whether content is free to access |
-| `isExclusive` | boolean | ❌ | Whether content is exclusive to platform |
-| `adult` | boolean | ❌ | Adult/NSFW content flag |
+| `maxPage` | number | ❌ | Maximum page count |
+| `language` | string | ❌ | Content language |
+| `favoriteId` | string | ❌ | Favorite identifier |
+| `stars` | number | ❌ | Rating (0-5, double precision) |
 
-### Methods
+### Example from MangaDex
 ```javascript
-// Get formatted update time
-comic.getUpdateTime(format = 'relative') // '2 days ago'
-
-// Check if comic matches filters
-comic.matchesFilter(filter) // boolean
-
-// Convert to plain object
-comic.toJSON() // { id, title, cover, ... }
-```
-
-### Example
-```javascript
-function parseComic(raw) {
-  return new Comic({
-    id: String(raw.id),
-    title: raw.title || raw.name,
-    cover: raw.cover_url || raw.thumbnail,
-    tags: Array.isArray(raw.tags) ? raw.tags : [],
-    description: raw.description || raw.summary || '',
-    author: raw.author || raw.artist || '',
-    status: this.mapStatus(raw.status),
-    updateTime: new Date(raw.updated_at).getTime(),
-    popularity: raw.popularity_score || 0,
-    rating: parseFloat(raw.rating) || 0,
-    episodeCount: raw.total_chapters || 0,
-    lastEpisode: raw.latest_chapter || '',
-    adult: raw.is_adult || false
+function parseComic(data) {
+  // Extract data from API response
+  let id = data['id'];
+  let titles = extractTitles(data);
+  let locale = APP.locale;
+  let mainTitle = selectTitleByLocale(titles, locale);
+  
+  let tags = [];
+  for (let tag of data['attributes']['tags']) {
+    tags.push(tag['attributes']['name']['en']);
+  }
+  
+  let cover = extractCoverUrl(data, id);
+  let description = data['attributes']['description']['en'];
+  
+  return Comic({
+    id: id,
+    title: mainTitle,
+    subtitle: extractAuthors(data)[0], // First author
+    cover: cover,
+    tags: tags,
+    description: description,
+    createTime: data['attributes']['createdAt'],
+    updateTime: data['attributes']['updatedAt'],
+    status: data['attributes']['status']
   });
-}
-
-// Status mapping helper
-mapStatus(rawStatus) {
-  const statusMap = {
-    'ongoing': 'ongoing',
-    'completed': 'completed',
-    'hiatus': 'hiatus',
-    'cancelled': 'cancelled',
-    'finished': 'completed',
-    'publishing': 'ongoing'
-  };
-  return statusMap[rawStatus?.toLowerCase()] || 'unknown';
 }
 ```
 
@@ -94,86 +77,227 @@ Extended information for individual comic details view.
 
 ### Constructor
 ```javascript
-new ComicDetails({
-  id: string,
+ComicDetails({
   title: string,
+  subtitle?: string,
+  subTitle?: string, // equal to subtitle
   cover: string,
-  tags: string[],
-  description: string,
-  author: string,
-  status: string,
-  updateTime: number,
-  episodes: Episode[],
-  related: Comic[],
-  comments: Comment[]
+  description?: string,
+  tags: Map<string, string[]> | {} | null | undefined,
+  chapters: Map<string, string> | {} | null | undefined, // key: chapter id, value: chapter title
+  isFavorite?: boolean | null | undefined,
+  subId?: string, // parameter passed to comments API
+  thumbnails?: string[], // for multiple page thumbnails, set to null and use `loadThumbnails` API
+  recommend?: Comic[], // related comics
+  commentCount?: number,
+  likesCount?: number,
+  isLiked?: boolean,
+  uploader?: string,
+  updateTime?: string,
+  uploadTime?: string,
+  url?: string,
+  stars?: number, // 0-5, double
+  maxPage?: number,
+  comments?: Comment[] // since 1.0.7 - app displays comments in details page
 })
 ```
 
-### Extended Properties
+### Key Properties
 | Property | Type | Description |
 |----------|------|-------------|
-| `episodes` | Episode[] | Array of episode/chapter objects |
-| `related` | Comic[] | Related/similar comics |
-| `comments` | Comment[] | User comments |
-| `alternativeTitles` | string[] | Alternative names/translations |
-| `publisher` | string | Publishing company |
-| `serialization` | string | Serialization magazine |
-| `year` | number | First publication year |
-| `volumes` | number | Total number of volumes |
-| `chapters` | number | Total number of chapters |
-| `translators` | string[] | Translation group names |
-| `sources` | string[] | Source websites/scanlation groups |
-| `contentRating` | string | Age rating: `'all'`, `'teen'`, `'mature'`, `'adult'` |
-| `downloadable` | boolean | Whether episodes can be downloaded |
-| `bookmarkable` | boolean | Whether episodes support bookmarks |
-| `sharable` | boolean | Whether comic can be shared |
+| `title` | string | Display title |
+| `subtitle` | string | Secondary title (often author name) |
+| `cover` | string | URL to cover image |
+| `description` | string | Summary/description text |
+| `tags` | Map<string, string[]> | Organized tags (e.g., `{"Tags": ["Action", "Adventure"], "Status": ["Ongoing"]}`) |
+| `chapters` | Map<string, string> | Chapter structure: volume -> Map<chapterId, chapterTitle> |
+| `recommend` | Comic[] | Related/similar comics |
+| `stars` | number | Rating (0-5, double precision) |
+| `comments` | Comment[] | User comments (supported since v1.0.7) |
+
+### Chapter Structure Example
+```javascript
+// chapters should be a Map where:
+// - Keys are volume names (e.g., "Volume 1", "No Volume")
+// - Values are Maps of chapter id -> chapter title
+let chapters = new Map();
+chapters.set("Volume 1", new Map([
+  ["chapter-123", "Chapter 1: Beginning"],
+  ["chapter-124", "Chapter 2: Journey"]
+]));
+chapters.set("No Volume", new Map([
+  ["chapter-125", "Chapter 3: Conclusion"]
+]));
+```
+
+### Example from MangaDex
+```javascript
+async function loadInfo(id) {
+  let [comic, chapters, stats] = await Promise.all([
+    this.comic.getComic(id),
+    this.comic.getChapters(id),
+    this.comic.getStats(id)
+  ]);
+  
+  return ComicDetails({
+    id: comic.id,
+    title: comic.title,
+    subtitle: comic.subtitle,
+    cover: comic.cover,
+    tags: {
+      "Tags": comic.tags,
+      "Status": comic.status,
+      "Authors": comic.authors,
+      "Artists": comic.artists,
+    },
+    description: comic.description,
+    updateTime: comic.updateTime,
+    uploadTime: comic.createTime,
+    status: comic.status,
+    chapters: chapters,
+    stars: (stats.rating || 0) / 2, // Convert 0-10 scale to 0-5
+    url: `https://mangadex.org/title/${comic.id}`,
+  });
+}
+
+// getChapters implementation
+async function getChapters(id) {
+  let res = await fetch(`https://api.mangadex.org/manga/${id}/feed?limit=500&translatedLanguage[]=en&order[chapter]=asc`);
+  let data = await res.json();
+  let chapters = new Map();
+  
+  for (let chapter of data['data']) {
+    let chapterId = chapter['id'];
+    let chapterNum = chapter['attributes']['chapter'];
+    let title = chapter['attributes']['title'];
+    let displayTitle = title ? `${chapterNum}: ${title}` : chapterNum;
+    let volume = chapter['attributes']['volume'];
+    let volumeName = volume ? `Volume ${volume}` : "No Volume";
+    
+    if (!chapters.get(volumeName)) {
+      chapters.set(volumeName, new Map());
+    }
+    chapters.get(volumeName).set(chapterId, displayTitle);
+  }
+  
+  return chapters;
+}
+```
+
+## Comment Object
+
+User comments and discussions.
+
+### Constructor
+```javascript
+Comment({
+  userName: string,
+  avatar?: string,
+  content: string,
+  time?: string,
+  replyCount?: number,
+  id?: string,
+  isLiked?: boolean,
+  score?: number,
+  voteStatus?: number // 1: upvote, -1: downvote, 0: none
+})
+```
+
+### Properties
+| Property | Type | Required | Description |
+|----------|------|----------|-------------|
+| `userName` | string | ✅ | Display username |
+| `avatar` | string | ❌ | User avatar URL |
+| `content` | string | ✅ | Comment text |
+| `time` | string | ❌ | Comment timestamp (string format) |
+| `replyCount` | number | ❌ | Number of replies |
+| `id` | string | ❌ | Comment identifier |
+| `isLiked` | boolean | ❌ | Whether user liked this comment |
+| `score` | number | ❌ | Score/rating |
+| `voteStatus` | number | ❌ | Vote status: 1=upvote, -1=downvote, 0=none |
 
 ### Example
 ```javascript
-async function loadComicDetails(comicId) {
-  const [infoResponse, episodesResponse] = await Promise.all([
-    Network.get(`${this.url}/comics/${comicId}`),
-    Network.get(`${this.url}/comics/${comicId}/episodes`)
-  ]);
-  
-  const info = infoResponse.data;
-  const episodes = episodesResponse.data.results;
-  
-  return new ComicDetails({
-    id: String(info.id),
-    title: info.title,
-    cover: info.cover_image,
-    tags: info.genres.map(g => g.name),
-    description: info.description,
-    author: info.authors.map(a => a.name).join(', '),
-    status: this.mapStatus(info.status),
-    updateTime: new Date(info.updated_at).getTime(),
-    episodes: episodes.map(parseEpisode),
-    related: info.related_comics.map(parseComic),
-    alternativeTitles: info.alternative_titles || [],
-    publisher: info.publisher?.name || '',
-    year: info.publication_year,
-    volumes: info.total_volumes,
-    chapters: info.total_chapters,
-    contentRating: info.is_adult ? 'adult' : 'teen',
-    downloadable: info.download_enabled || false
+function parseComment(raw) {
+  return Comment({
+    userName: raw.user?.name || "Anonymous",
+    avatar: raw.user?.avatar,
+    content: raw.text || raw.content,
+    time: raw.created_at,
+    replyCount: raw.reply_count,
+    id: raw.id,
+    score: raw.score || 0,
+    voteStatus: raw.vote_status || 0
   });
 }
 ```
 
-## Episode Object
+## ImageLoadingConfig Object
 
-Individual chapter/episode information.
+Configuration for image loading, used in `onImageLoad` and `onThumbnailLoad` callbacks.
 
 ### Constructor
 ```javascript
-new Episode({
-  id: string,
-  title: string,
-  order: number,
-  uploadTime: number,
-  pages: Page[]
+ImageLoadingConfig({
+  url?: string,
+  method?: string, // HTTP method, uppercase
+  data?: any, // request data, may be null
+  headers?: Object, // request headers
+  onResponse?: (ArrayBuffer) => ArrayBuffer, // modify response data
+  modifyImage?: string, // JS script string for image modification
+  onLoadFailed?: () => ImageLoadingConfig // called when image loading failed
 })
+```
+
+### Key Properties
+| Property | Type | Description |
+|----------|------|-------------|
+| `url` | string | Image URL to load |
+| `method` | string | HTTP method (GET, POST, etc.) |
+| `data` | any | Request payload |
+| `headers` | Object | HTTP headers |
+| `onResponse` | function | Transform response data |
+| `modifyImage` | string | JS script to modify image in separate isolate |
+| `onLoadFailed` | function | Fallback config if loading fails |
+
+### Example
+```javascript
+function onImageLoad(config) {
+  // Add authentication headers
+  config.headers = {
+    ...config.headers,
+    "Authorization": "Bearer " + this.authToken
+  };
+  
+  // Modify response if needed
+  config.onResponse = (buffer) => {
+    // Decrypt or transform image data
+    return this.decryptImage(buffer);
+  };
+  
+  return config;
+}
+```
+
+## Note: Episodes and Pages
+
+Venera does not have dedicated `Episode` or `Page` constructor functions. Instead:
+
+### Chapter/Episode Handling
+- Chapters are stored in `ComicDetails.chapters` as a Map structure
+- Episode loading is done through the `loadEp` method which returns `{images: string[]}`
+- Each image URL in the array represents a page
+
+### Example Episode Loading
+```javascript
+async function loadEp(comicId, chapterId) {
+  let res = await fetch(`https://api.example.com/chapter/${chapterId}/images`);
+  let data = await res.json();
+  
+  return {
+    images: data.pages.map(page => page.url)
+  };
+}
 ```
 
 ### Properties
@@ -240,150 +364,206 @@ new Page({
 | `format` | string | ❌ | Image format: `'jpg'`, `'png'`, `'webp'` |
 | `estimatedSize` | number | ❌ | Estimated file size |
 
-## Comment Object
+## Validation and Best Practices
 
-User comments and discussions.
+### Required Properties Checklist
+When creating `Comic` or `ComicDetails` objects, ensure these properties are set:
 
-### Constructor
+**Comic (for lists):**
+- ✅ `id` - Unique string identifier
+- ✅ `title` - Display title  
+- ✅ `cover` - Valid image URL
+- ✅ `tags` - Array of tag strings or organized Map
+- ✅ `description` - Summary text (can be empty string)
+
+**ComicDetails (for detail view):**
+- ✅ `title` - Display title
+- ✅ `cover` - Valid image URL
+- ✅ `chapters` - Map structure for chapter organization
+- ✅ `tags` - Organized Map with categories
+- ✅ `description` - Detailed summary
+
+### Common Validation Issues
+
+#### 1. Missing Required Properties
 ```javascript
-new Comment({
-  id: string,
-  userId: string,
-  username: string,
-  avatar: string,
-  content: string,
-  time: number,
-  likes: number
-})
+// ❌ WRONG - Missing required properties
+Comic({ id: "123", title: "My Comic" });
+
+// ✅ CORRECT - All required properties included
+Comic({
+  id: "123",
+  title: "My Comic",
+  cover: "https://example.com/cover.jpg",
+  tags: ["Action", "Adventure"],
+  description: "A great comic"
+});
 ```
 
-### Properties
-| Property | Type | Required | Description |
-|----------|------|----------|-------------|
-| `id` | string | ✅ | Comment identifier |
-| `userId` | string | ✅ | User identifier |
-| `username` | string | ✅ | Display username |
-| `avatar` | string | ✅ | User avatar URL |
-| `content` | string | ✅ | Comment text |
-| `time` | number | ✅ | Comment timestamp (ms) |
-| `likes` | number | ✅ | Number of likes |
-| `replies` | Comment[] | ❌ | Array of reply comments |
-| `isAuthor` | boolean | ❌ | Whether comment is from comic author |
-| `isVerified` | boolean | ❌ | Whether user is verified |
-| `userLevel` | number | ❌ | User level/rank |
-
-## PageJumpTarget Object
-
-Navigation targets within comic reader.
-
-### Constructor
+#### 2. Incorrect Chapter Structure
 ```javascript
-new PageJumpTarget({
-  id: string,
-  title: string,
-  page: number
-})
+// ❌ WRONG - Using array instead of Map
+ComicDetails({
+  chapters: [
+    { id: "ch1", title: "Chapter 1" },
+    { id: "ch2", title: "Chapter 2" }
+  ]
+});
+
+// ✅ CORRECT - Proper Map structure
+let chapters = new Map();
+chapters.set("No Volume", new Map([
+  ["ch1", "Chapter 1: Beginning"],
+  ["ch2", "Chapter 2: Journey"]
+]));
+ComicDetails({ chapters: chapters });
 ```
 
-### Properties
-| Property | Type | Required | Description |
-|----------|------|----------|-------------|
-| `id` | string | ✅ | Target identifier |
-| `title` | string | ✅ | Display title |
-| `page` | number | ✅ | Target page number |
-
-## Validation Rules
-
-### Comic Validation
+#### 3. Tag Organization
 ```javascript
-function validateComic(comic) {
+// ❌ WRONG - Flat array without categories
+ComicDetails({
+  tags: ["Action", "Adventure", "Ongoing", "Author Name"]
+});
+
+// ✅ CORRECT - Organized by category
+ComicDetails({
+  tags: {
+    "Genres": ["Action", "Adventure"],
+    "Status": ["Ongoing"],
+    "Authors": ["Author Name"]
+  }
+});
+```
+
+### Helper Functions
+
+#### 1. Safe Comic Creation
+```javascript
+function createComic(data) {
+  // Ensure required properties exist
+  const defaults = {
+    id: "",
+    title: "",
+    cover: "",
+    tags: [],
+    description: "",
+    subtitle: "",
+    subTitle: "",
+    maxPage: 0,
+    language: "en",
+    favoriteId: "",
+    stars: 0
+  };
+  
+  return Comic({
+    ...defaults,
+    ...data,
+    // Ensure arrays are properly initialized
+    tags: Array.isArray(data.tags) ? data.tags : []
+  });
+}
+```
+
+#### 2. Chapter Map Builder
+```javascript
+function buildChapterMap(chapterList) {
+  const chapterMap = new Map();
+  
+  // Group by volume or use "No Volume" as default
+  const volumeMap = new Map();
+  
+  for (const chapter of chapterList) {
+    const volumeName = chapter.volume ? `Volume ${chapter.volume}` : "No Volume";
+    
+    if (!volumeMap.has(volumeName)) {
+      volumeMap.set(volumeName, new Map());
+    }
+    
+    const chapterTitle = chapter.title 
+      ? `Chapter ${chapter.number}: ${chapter.title}`
+      : `Chapter ${chapter.number}`;
+    
+    volumeMap.get(volumeName).set(chapter.id, chapterTitle);
+  }
+  
+  // Convert to the required structure
+  for (const [volumeName, chapters] of volumeMap) {
+    chapterMap.set(volumeName, chapters);
+  }
+  
+  return chapterMap;
+}
+```
+
+#### 3. Tag Organizer
+```javascript
+function organizeTags(rawTags, authors, status) {
+  const tags = {};
+  
+  // Organize by category
+  if (Array.isArray(rawTags) && rawTags.length > 0) {
+    tags["Genres"] = rawTags;
+  }
+  
+  if (authors && authors.length > 0) {
+    tags["Authors"] = authors;
+  }
+  
+  if (status) {
+    tags["Status"] = [status];
+  }
+  
+  return tags;
+}
+```
+
+## Performance Considerations
+
+### 1. Chapter Map Size
+- Limit chapters per volume to 500-1000 for performance
+- Consider pagination for comics with many chapters
+- Use lazy loading for chapter details when possible
+
+### 2. Image Loading
+- Return direct image URLs in `loadEp` for fastest loading
+- Use `onImageLoad` callback for authentication or transformation
+- Consider using `modifyImage` script for complex image processing
+
+### 3. Caching Strategy
+- Cache comic lists with appropriate TTL based on update frequency
+- Cache chapter structures since they change less frequently
+- Implement cache invalidation when comic details update
+
+## Debugging Tips
+
+### 1. Check Console Output
+```javascript
+// Add debugging to see what data is being created
+console.log("Creating Comic:", data);
+const comic = Comic(data);
+console.log("Created Comic:", comic);
+return comic;
+```
+
+### 2. Validate Structure
+```javascript
+function validateComicDetails(details) {
   const errors = [];
   
-  if (!comic.id || typeof comic.id !== 'string') {
-    errors.push('Comic ID must be a non-empty string');
+  if (!details.title) errors.push("Missing title");
+  if (!details.cover) errors.push("Missing cover URL");
+  if (!details.chapters || !(details.chapters instanceof Map)) {
+    errors.push("Invalid chapter structure");
   }
   
-  if (!comic.title || typeof comic.title !== 'string') {
-    errors.push('Comic title must be a non-empty string');
+  if (errors.length > 0) {
+    console.error("ComicDetails validation errors:", errors);
+    throw new Error(`Invalid ComicDetails: ${errors.join(", ")}`);
   }
   
-  if (!comic.cover || typeof comic.cover !== 'string') {
-    errors.push('Comic cover must be a valid URL string');
-  }
-  
-  if (!Array.isArray(comic.tags)) {
-    errors.push('Comic tags must be an array');
-  }
-  
-  if (typeof comic.description !== 'string') {
-    errors.push('Comic description must be a string');
-  }
-  
-  return errors;
+  return details;
 }
 ```
 
-### Episode Validation
-```javascript
-function validateEpisode(episode) {
-  const errors = [];
-  
-  if (!episode.id || typeof episode.id !== 'string') {
-    errors.push('Episode ID must be a non-empty string');
-  }
-  
-  if (!episode.title || typeof episode.title !== 'string') {
-    errors.push('Episode title must be a non-empty string');
-  }
-  
-  if (typeof episode.order !== 'number' || episode.order < 0) {
-    errors.push('Episode order must be a non-negative number');
-  }
-  
-  if (!Array.isArray(episode.pages) || episode.pages.length === 0) {
-    errors.push('Episode must have at least one page');
-  }
-  
-  return errors;
-}
-```
-
-## Data Transformation Utilities
-
-### Normalization Functions
-```javascript
-// Normalize comic data from various API formats
-function normalizeComicData(raw, sourceFormat) {
-  switch (sourceFormat) {
-    case 'mangadex':
-      return {
-        id: raw.id,
-        title: raw.attributes.title.en || raw.attributes.title.jp,
-        cover: `https://uploads.mangadex.org/covers/${raw.id}/${raw.attributes.fileName}`,
-        tags: raw.attributes.tags.map(tag => tag.attributes.name.en),
-        description: raw.attributes.description.en || ''
-      };
-      
-    case 'comick':
-      return {
-        id: raw.slug,
-        title: raw.title,
-        cover: `https://meo.comick.pictures/${raw.md_covers?.[0]?.b2key}`,
-        tags: raw.md_comic_md_genres?.map(g => g.md_genres.name) || [],
-        description: raw.desc || ''
-      };
-      
-    default:
-      // Generic normalization
-      return {
-        id: String(raw.id || raw.slug || ''),
-        title: raw.title || raw.name || '',
-        cover: raw.cover || raw.thumbnail || raw.image_url || '',
-        tags: raw.tags || raw.genres || [],
-        description: raw.description || raw.summary || ''
-      };
-  }
-}
-```
-
-These data models form the foundation of all Venera source implementations. Proper usage ensures consistent data representation across all manga/comic sources while maintaining compatibility with the Venera app.
+These data models and patterns ensure compatibility with Venera's JavaScript runtime. Always refer to the actual `init.js` file for the most up-to-date API definitions.

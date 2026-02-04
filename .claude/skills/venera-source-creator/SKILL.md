@@ -11,23 +11,37 @@ Complete toolkit for creating and maintaining Venera manga/comic source configur
 
 ### Venera Architecture
 - **ComicSource Base Class**: All sources extend this class with optional method implementations
-- **Network API**: Global `Network` object for HTTP requests (get, post, delete)
-- **Data Models**: Standardized `Comic`, `ComicDetails`, `Comment`, `PageJumpTarget` objects
+- **Network API**: Global `Network` object with `fetchBytes()` and `sendRequest()` methods
+- **Utility APIs**: `Convert` for encoding/decoding, `HtmlDocument` for HTML parsing, `Image` for image manipulation
+- **Data Models**: `Comic()`, `ComicDetails()`, `Comment()`, `ImageLoadingConfig()` constructor functions
+- **App Info**: `APP` global object with version, locale, and platform info
 - **Configuration Pattern**: Each source is a standalone `.js` file
 
-### Required Methods
-Every source must implement:
+### Required Properties
+Every source must define these properties:
 - `name`: Display name of the source
-- `key`: Unique identifier (camelCase or PascalCase)
-- `version`: Source configuration version
-- `minAppVersion`: Minimum Venera app version required
-- `url`: Base URL of the manga/comic website
+- `key`: Unique identifier (snake_case, matches filename)
+- `version`: Source configuration version (semantic versioning)
+- `minAppVersion`: Minimum Venera app version required (e.g., "1.4.0")
+- `url`: Update URL where users can download the latest version
 
-### Optional Methods
-- **Core Features**: `explore`, `category`, `search`, `comic.loadInfo`, `comic.loadEp`
-- **User Features**: `account`, `favorites`, `history`
-- **Social Features**: `comic.loadComments`, `comment.loadReply`
-- **Configuration**: `optionList`, `optionLoader`, `onImageLoad`, `onThumbnailLoad`
+### Core API Methods (Recommended)
+- `getPopular(page)`: Returns popular comics for homepage
+- `getLatest(page)`: Returns recently updated comics  
+- `search(keyword, page)`: Search comics by keyword
+- `loadInfo(id)`: Load full comic details including chapters
+- `loadEp(comicId, chapterId)`: Load chapter images
+
+### Optional Features
+- **User Features**: `login()`, `checkLogin()`, `getFavorites()` 
+- **Image Configuration**: `onImageLoad(config)`, `onThumbnailLoad(config)`
+- **Custom Headers**: Set `defaultHeaders` property for API requests
+
+### Important Notes
+- **Constructor Functions**: Use `Comic({...})`, `ComicDetails({...})` - these are functions, not classes
+- **Chapter Structure**: `chapters` must be a Map where keys are volume names and values are Maps of chapterId->title
+- **Tags Organization**: Tags should be organized in a Map by category (e.g., `{"Genres": ["Action"], "Status": ["Ongoing"]}`)
+- **Network API**: Use `Network.sendRequest(method, url, headers, data, extra)` or `Network.fetchBytes(...)` for binary data
 
 ## When to Use This Skill
 
@@ -85,56 +99,123 @@ Use this skill when:
    python scripts/validate_source.py fixed_source.js
    ```
 
-### Common Implementation Patterns
+### Actual Implementation Patterns from MangaDex Example
 
-#### Standard API Call Pattern
+#### Standard API Call Pattern (Using Venera's Network API)
 ```javascript
 async function fetchComics(endpoint, params = {}) {
     try {
-        const response = await Network.get(endpoint, params);
-        if (!response.data) {
-            throw new Error('No data returned from API');
-        }
-        return response.data;
+        const response = await Network.sendRequest(
+            'GET',
+            endpoint,
+            {}, // headers
+            null, // data (null for GET requests)
+            params // extra parameters
+        );
+        
+        const data = JSON.parse(Convert.decodeUtf8(response));
+        return data.results || data.data || [];
     } catch (error) {
-        // Handle network errors or invalid responses
+        console.error('API call failed:', error);
         throw new Error(`Failed to fetch comics: ${error.message}`);
     }
 }
 ```
 
-#### Data Parsing Function
+#### Comic Parsing Function (Real Example)
 ```javascript
 function parseComic(rawData) {
-    return new Comic({
-        id: String(rawData.id || rawData.slug),
-        title: rawData.title || rawData.name,
-        cover: rawData.cover_url || rawData.thumbnail,
-        tags: Array.isArray(rawData.tags) ? rawData.tags : [],
-        description: rawData.description || rawData.desc || '',
-        author: rawData.author || '',
-        status: rawData.status || 'unknown',
-        updateTime: rawData.updated_at || Date.now()
+    // Extract titles and select based on user locale
+    let titles = extractTitles(rawData);
+    let locale = APP.locale;
+    let mainTitle = selectTitleByLocale(titles, locale);
+    
+    return Comic({
+        id: String(rawData.id),
+        title: mainTitle,
+        subtitle: extractAuthors(rawData)[0] || '',
+        cover: extractCoverUrl(rawData, rawData.id),
+        tags: extractTags(rawData),
+        description: rawData.attributes?.description?.en || '',
+        maxPage: 0,
+        language: 'en',
+        favoriteId: '',
+        stars: 0
     });
 }
 ```
 
-#### Search Implementation
+#### Search Implementation (Using Actual Venera API)
 ```javascript
 class MyComicSource extends ComicSource {
-    // ... other methods
+    // ... other properties
+    
+    baseUrl = 'https://example.com';
+    apiBaseUrl = 'https://api.example.com';
     
     async search(keyword, page) {
-        const endpoint = `${this.url}/api/search`;
-        const params = {
-            q: keyword,
-            page: page || 1,
-            limit: 20
-        };
+        const endpoint = `${this.apiBaseUrl}/search`;
+        const response = await Network.sendRequest(
+            'GET',
+            endpoint,
+            {},
+            null,
+            { q: keyword, page: page || 1, limit: this.comicsPerPage }
+        );
         
-        const data = await Network.get(endpoint, params);
-        return data.results.map(parseComic);
+        const data = JSON.parse(Convert.decodeUtf8(response));
+        return data.results.map(item => this.parseComic(item));
     }
+    
+    parseComic(raw) {
+        // Actual parsing logic here
+        return Comic({
+            id: String(raw.id),
+            title: raw.title,
+            subtitle: raw.author,
+            cover: raw.cover_url,
+            tags: raw.genres || [],
+            description: raw.description || '',
+            maxPage: raw.total_chapters || 0,
+            language: raw.language || 'en',
+            favoriteId: '',
+            stars: raw.rating || 0
+        });
+    }
+}
+```
+
+#### Chapter Map Creation (Required Structure)
+```javascript
+async function fetchChapters(comicId) {
+    const response = await Network.sendRequest(
+        'GET',
+        `${this.apiBaseUrl}/comic/${comicId}/chapters`,
+        {},
+        null,
+        { limit: 500, order: 'asc' }
+    );
+    
+    const data = JSON.parse(Convert.decodeUtf8(response));
+    const chapters = new Map();
+    
+    for (const chapter of data.results || []) {
+        const chapterId = chapter.id;
+        const chapterNum = chapter.chapter;
+        const title = chapter.title;
+        const displayTitle = title ? `${chapterNum}: ${title}` : `Chapter ${chapterNum}`;
+        
+        const volume = chapter.volume;
+        const volumeName = volume ? `Volume ${volume}` : "No Volume";
+        
+        if (!chapters.get(volumeName)) {
+            chapters.set(volumeName, new Map());
+        }
+        
+        chapters.get(volumeName).set(chapterId, displayTitle);
+    }
+    
+    return chapters;
 }
 ```
 

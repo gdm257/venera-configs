@@ -1,323 +1,317 @@
-# Venera Network API Reference
+# Venera JavaScript API Reference
 
-Complete documentation of the global `Network` object available in Venera source configurations.
+Complete documentation of the global APIs available in Venera source configurations.
 
-## Overview
+## Core APIs
 
-The `Network` object provides HTTP client functionality for making requests to manga/comic websites. It handles authentication, cookies, headers, and response parsing automatically.
+### `Network` Object
+Global HTTP client object with cookie management.
 
-## Core Methods
-
-### `Network.get(url, params = {})`
-Make a GET request.
+#### `Network.fetchBytes(method, url, headers, data, extra)`
+Sends HTTP request and returns ArrayBuffer response.
 
 **Parameters:**
+- `method` (string): HTTP method ('GET', 'POST', 'PUT', 'PATCH', 'DELETE')
 - `url` (string): Target URL
-- `params` (object): Query parameters and options
+- `headers` (object): Request headers
+- `data` (any): Request data
+- `extra` (object): Additional options
 
-**Options:**
+**Return Value:**
 ```javascript
 {
-  headers: {},      // Custom headers
-  params: {},       // Query parameters
-  timeout: 30000,   // Request timeout in ms
-  responseType: 'json' // 'json', 'text', 'arraybuffer'
+  status: number,      // HTTP status code
+  headers: {},         // Response headers
+  body: ArrayBuffer    // Response body as ArrayBuffer
 }
 ```
 
-**Example:**
-```javascript
-const response = await Network.get('https://api.manga.com/comics', {
-  headers: {
-    'User-Agent': 'Venera/1.0',
-    'Accept': 'application/json'
-  },
-  params: {
-    page: 1,
-    limit: 20
-  }
-});
+#### `Network.sendRequest(method, url, headers, data, extra)`
+Sends HTTP request and returns string response.
 
-// Response structure
+**Parameters:** Same as above
+
+**Return Value:**
+```javascript
 {
-  ok: true,           // HTTP status 2xx
-  status: 200,        // HTTP status code
-  data: {},           // Parsed response body
-  headers: {},        // Response headers
-  config: {}          // Request configuration
+  status: number,      // HTTP status code
+  headers: {},         // Response headers
+  body: string         // Response body as string
 }
 ```
 
-### `Network.post(url, data = {}, params = {})`
-Make a POST request.
-
-**Parameters:**
-- `url` (string): Target URL
-- `data` (object): Request body data
-- `params` (object): Request options
-
-**Example:**
+#### Convenience Methods
 ```javascript
-const response = await Network.post('https://api.manga.com/login', {
-  username: 'user',
-  password: 'pass'
-}, {
-  headers: {
-    'Content-Type': 'application/json'
-  }
-});
+// All return Promise<{status, headers, body}>
+Network.get(url, headers, extra)
+Network.post(url, headers, data, extra)
+Network.put(url, headers, data, extra)
+Network.patch(url, headers, data, extra)
+Network.delete(url, headers, extra)
 ```
 
-### `Network.delete(url, params = {})`
-Make a DELETE request.
-
-**Example:**
+#### Cookie Management
 ```javascript
-await Network.delete('https://api.manga.com/favorites/123');
+// Set cookies for a specific URL
+Network.setCookies(url, cookies)
+
+// Get cookies for a specific URL  
+Network.getCookies(url)
+
+// Delete cookies for a specific URL
+Network.deleteCookies(url)
 ```
 
-## Cookie Management
-
-### `Network.setCookies(cookies, domain)`
-Set cookies for subsequent requests.
-
-**Parameters:**
-- `cookies` (string|array): Cookie string or array of cookie objects
-- `domain` (string): Optional domain restriction
-
-**Example:**
+**Cookie Object Format:**
 ```javascript
-// Set from string
-Network.setCookies('session_id=abc123; user_id=456', 'manga.com');
-
-// Set from array
-Network.setCookies([
-  { name: 'session_id', value: 'abc123' },
-  { name: 'user_id', value: '456' }
-]);
-```
-
-### `Network.deleteCookies(domain)`
-Delete all cookies for a domain.
-
-**Example:**
-```javascript
-Network.deleteCookies('manga.com');
-```
-
-## Response Handling
-
-### Success Responses
-```javascript
-try {
-  const response = await Network.get(url);
-  
-  if (response.ok) {
-    // Process successful response
-    const comics = response.data.results;
-    return comics.map(parseComic);
-  } else {
-    throw new Error(`HTTP ${response.status}: ${response.data?.message}`);
-  }
-} catch (error) {
-  throw new Error(`Network request failed: ${error.message}`);
+{
+  name: string,
+  value: string,
+  domain: string,
+  path: string,
+  expires: number, // milliseconds since epoch
+  httpOnly: boolean,
+  secure: boolean,
+  sameSite: string // 'Strict', 'Lax', 'None'
 }
 ```
 
-### Error Handling Best Practices
+### `Convert` Object
+Encoding/decoding and cryptographic utilities.
+
+#### Text Encoding/Decoding
 ```javascript
-async function safeRequest(url, options = {}) {
-  try {
-    const response = await Network.get(url, options);
-    
-    if (!response.ok) {
-      // Handle specific HTTP errors
-      if (response.status === 401) {
-        throw new Error('Authentication required');
-      } else if (response.status === 404) {
-        throw new Error('Resource not found');
-      } else if (response.status >= 500) {
-        throw new Error('Server error');
-      }
-      
-      throw new Error(`Request failed: ${response.status}`);
+Convert.encodeUtf8(str)        // string → ArrayBuffer
+Convert.decodeUtf8(buffer)     // ArrayBuffer → string
+Convert.encodeGbk(str)         // string → ArrayBuffer (GBK encoding)
+Convert.decodeGbk(buffer)      // ArrayBuffer → string (GBK decoding)
+Convert.encodeBase64(buffer)   // ArrayBuffer → base64 string
+Convert.decodeBase64(str)      // base64 string → ArrayBuffer
+```
+
+#### Cryptographic Hash Functions
+```javascript
+Convert.md5(buffer)           // ArrayBuffer → ArrayBuffer
+Convert.sha1(buffer)          // ArrayBuffer → ArrayBuffer  
+Convert.sha256(buffer)        // ArrayBuffer → ArrayBuffer
+Convert.sha512(buffer)        // ArrayBuffer → ArrayBuffer
+```
+
+#### HMAC (Hash-based Message Authentication Code)
+```javascript
+Convert.hmac(key, value, hash)           // Returns ArrayBuffer
+Convert.hmacString(key, value, hash)    // Returns hex string
+```
+
+#### AES Encryption/Decryption
+```javascript
+// ECB mode
+Convert.encryptAesEcb(value, key)      // Encrypt
+Convert.decryptAesEcb(value, key)      // Decrypt
+
+// CBC mode  
+Convert.encryptAesCbc(value, key, iv)  // Encrypt
+Convert.decryptAesCbc(value, key, iv)  // Decrypt
+```
+
+### `HtmlDocument` Class
+HTML parsing and DOM querying.
+
+#### Creating a Document
+```javascript
+const doc = new HtmlDocument(htmlString);
+```
+
+#### Query Methods
+```javascript
+// Select single element by CSS selector
+doc.select(selector)           // Returns HtmlElement or null
+
+// Select all elements matching CSS selector  
+doc.selectAll(selector)        // Returns HtmlElement[]
+```
+
+### `HtmlElement` Class
+Represents a DOM element.
+
+#### Navigation Methods
+```javascript
+element.firstChild            // First child element
+element.lastChild             // Last child element  
+element.nextSibling           // Next sibling element
+element.previousSibling       // Previous sibling element
+element.parent                // Parent element
+element.children              // Array of child elements
+```
+
+#### Attribute and Content Methods
+```javascript
+element.attr(name)            // Get attribute value
+element.attrs()               // Get all attributes as object
+
+element.text()                // Get text content
+element.outerHtml()           // Get outer HTML
+element.innerHtml()           // Get inner HTML
+```
+
+#### Query Methods
+```javascript
+element.select(selector)      // Find descendant by selector
+element.selectAll(selector)   // Find all descendants by selector
+```
+
+### `HtmlNode` Class
+Base class for DOM nodes.
+
+#### Properties
+```javascript
+node.nodeType                // Node type (1=ELEMENT, 3=TEXT, etc.)
+node.nodeName                // Node name
+node.parent                  // Parent node
+node.children                // Array of child nodes
+```
+
+### `Image` Class
+Image processing utilities.
+
+#### Methods
+```javascript
+// Create image from bytes
+Image.fromBytes(bytes)       // Returns Image object
+
+// Image operations
+image.resize(width, height)  // Resize image
+image.crop(x, y, w, h)       // Crop image
+image.toBytes()              // Convert to ArrayBuffer
+```
+
+### `UI` Object
+User interface utilities.
+
+#### Methods
+```javascript
+UI.showMessage(message)      // Display toast message
+UI.showDialog(title, content, options) // Show modal dialog
+UI.showLoading()             // Show loading indicator
+UI.hideLoading()             // Hide loading indicator
+```
+
+### `APP` Object
+Application information.
+
+#### Properties
+```javascript
+APP.version                  // Venera app version string
+APP.locale                   // User locale (e.g., 'en', 'zh_CN', 'zh_TW')
+APP.platform                 // Platform identifier
+```
+
+### Global Functions
+
+#### `fetch(url, options)`
+Browser-compatible fetch API (available since v1.2.0).
+
+```javascript
+async function fetchData() {
+  const response = await fetch('https://api.example.com/data', {
+    method: 'GET',
+    headers: {
+      'Authorization': 'Bearer token'
     }
-    
-    return response.data;
-  } catch (error) {
-    // Re-throw with context
-    if (error.message.includes('timeout')) {
-      throw new Error('Request timed out');
-    } else if (error.message.includes('network')) {
-      throw new Error('Network connection failed');
-    }
-    
-    throw error;
-  }
-}
-```
-
-## Common Patterns
-
-### Pagination
-```javascript
-async function fetchPaginated(endpoint, page = 1, limit = 20) {
-  const response = await Network.get(endpoint, {
-    params: { page, limit }
   });
   
-  return {
-    items: response.data.results,
-    hasNext: response.data.has_next,
-    total: response.data.total
+  const data = await response.json();
+  return data;
+}
+```
+
+#### `compute(func, ...args)`
+Execute function in a separate isolate for heavy computation.
+
+```javascript
+const result = await compute(heavyProcessingFunction, arg1, arg2);
+```
+
+### Callback Functions
+
+#### `onImageLoad(config)`
+Called before loading comic page images.
+
+```javascript
+function onImageLoad(config) {
+  // Add authentication headers
+  config.headers = {
+    ...config.headers,
+    'Authorization': 'Bearer ' + this.authToken
   };
+  
+  return config;
 }
 ```
 
-### Authentication with Tokens
+#### `onThumbnailLoad(config)`
+Called before loading comic thumbnails.
+
 ```javascript
-class AuthSource extends ComicSource {
-  constructor() {
-    super();
-    this.token = null;
-  }
+function onThumbnailLoad(config) {
+  // Configure thumbnail size and quality
+  config.params = {
+    ...config.params,
+    width: 200,
+    height: 300,
+    quality: 80
+  };
   
-  async login(credentials) {
-    const response = await Network.post(`${this.url}/auth/login`, credentials);
-    this.token = response.data.token;
+  return config;
+}
+```
+
+## Usage Examples
+
+### Basic API Call
+```javascript
+async function getPopularComics(page = 1) {
+  const response = await Network.sendRequest(
+    'GET',
+    'https://api.manga.com/popular',
+    {},
+    null,
+    { page: page, limit: 20 }
+  );
+  
+  const data = JSON.parse(Convert.decodeUtf8(response.body));
+  return data.results;
+}
+```
+
+### HTML Parsing
+```javascript
+async function parseComicList(html) {
+  const doc = new HtmlDocument(html);
+  const comicElements = doc.selectAll('.comic-item');
+  
+  const comics = [];
+  for (const element of comicElements) {
+    const title = element.select('.title').text();
+    const coverUrl = element.select('img').attr('src');
     
-    // Set authorization header for future requests
-    Network.setHeaders({
-      'Authorization': `Bearer ${this.token}`
+    comics.push({
+      title: title,
+      cover: coverUrl
     });
-    
-    return response.data.user;
-  }
-}
-```
-
-### Retry Logic
-```javascript
-async function fetchWithRetry(url, maxRetries = 3) {
-  let lastError;
-  
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    try {
-      return await Network.get(url);
-    } catch (error) {
-      lastError = error;
-      
-      if (attempt < maxRetries) {
-        // Exponential backoff
-        await new Promise(resolve => 
-          setTimeout(resolve, 1000 * Math.pow(2, attempt))
-        );
-      }
-    }
   }
   
-  throw lastError;
+  return comics;
 }
 ```
 
-## Configuration Options
-
-### Headers
+### Image Processing
 ```javascript
-// Set default headers
-Network.setHeaders({
-  'User-Agent': 'Venera/1.0',
-  'Accept': 'application/json',
-  'Accept-Language': 'en-US,en;q=0.9'
-});
-
-// Headers for specific request
-const response = await Network.get(url, {
-  headers: {
-    'Referer': 'https://manga.com',
-    'X-Requested-With': 'XMLHttpRequest'
-  }
-});
-```
-
-### Timeouts
-```javascript
-// Global timeout
-Network.setTimeout(30000);
-
-// Per-request timeout
-const response = await Network.get(url, {
-  timeout: 60000  // 60 seconds
-});
-```
-
-## Image Loading
-
-### `onImageLoad(config)`
-Configure image loading behavior.
-
-**Example:**
-```javascript
-onImageLoad(config) {
-  // Add referer header for image requests
-  config.headers['Referer'] = this.url;
-  return config;
+async function processImage(imageBytes) {
+  const image = Image.fromBytes(imageBytes);
+  const resized = image.resize(300, 400);
+  return resized.toBytes();
 }
 ```
 
-### `onThumbnailLoad(config)`
-Configure thumbnail loading behavior.
-
-**Example:**
-```javascript
-onThumbnailLoad(config) {
-  // Resize thumbnails for better performance
-  config.params = config.params || {};
-  config.params.width = 200;
-  config.params.height = 300;
-  return config;
-}
-```
-
-## Best Practices
-
-1. **Always use try-catch** for Network calls
-2. **Validate responses** before parsing
-3. **Handle pagination** properly for large datasets
-4. **Implement retry logic** for transient failures
-5. **Set appropriate timeouts** based on API response times
-6. **Use referer headers** when required by websites
-7. **Cache authentication tokens** when possible
-8. **Respect rate limits** and implement backoff strategies
-
-## Common Issues and Solutions
-
-### CORS Errors
-```javascript
-// Add proper headers
-headers: {
-  'Origin': 'https://manga.com',
-  'Referer': 'https://manga.com'
-}
-```
-
-### Rate Limiting
-```javascript
-// Implement rate limiting with exponential backoff
-async function rateLimitedRequest(url) {
-  const delay = Math.random() * 1000 + 500; // 500-1500ms
-  await new Promise(resolve => setTimeout(resolve, delay));
-  return await Network.get(url);
-}
-```
-
-### Session Expiration
-```javascript
-// Check for session expiration and re-authenticate
-if (response.status === 401) {
-  await this.login(this.credentials);
-  return await Network.get(url); // Retry
-}
-```
-
-This API provides the foundation for all Venera source implementations. Proper usage ensures reliable integration with manga/comic websites while maintaining good performance and error resilience.
+These APIs form the foundation of Venera source configurations. Always refer to the actual `init.js` file for the most up-to-date API definitions.
