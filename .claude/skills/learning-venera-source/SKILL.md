@@ -1,6 +1,6 @@
 ---
 name: learning-venera-source
-description: Complete guide for creating, fixing, and maintaining Venera comic sources without reading venera codebase.
+description: MUST read guide before creating, fixing, and maintaining Venera comic sources without reading venera codebase.
 license: MIT
 compatibility: opencode
 metadata:
