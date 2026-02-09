@@ -1,6 +1,6 @@
 ---
 name: venera-source-development
-description: MUST read guide before creating, fixing, and maintaining Venera comic sources without reading venera codebase.
+description: This skill should be used when the user wants to create a new Venera comic source, fix issues in existing sources, maintain or update source configurations, implement data fetching and parsing for manga/comic websites, add authentication or search functionality to sources, or troubleshoot network requests, HTML parsing, image loading, or rate limiting problems in Venera sources.
 license: MIT
 compatibility: opencode
 metadata:
