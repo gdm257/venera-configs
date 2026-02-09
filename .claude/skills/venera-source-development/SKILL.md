@@ -1,5 +1,5 @@
 ---
-name: learning-venera-source
+name: venera-source-development
 description: MUST read guide before creating, fixing, and maintaining Venera comic sources without reading venera codebase.
 license: MIT
 compatibility: opencode
